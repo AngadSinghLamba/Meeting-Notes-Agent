@@ -4,49 +4,208 @@
     <meta charset="utf-8" />
     <title>Meeting Notes Agent</title>
     <style>
-      body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; }
-      textarea { width: 100%; height: 180px; }
-      input { width: 100%; padding: 8px; }
-      button { padding: 10px 14px; cursor: pointer; }
-      .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-top: 16px; }
+      body { font-family: system-ui, sans-serif; max-width: 980px; margin: 40px auto; padding: 0 16px; }
+      textarea { width: 100%; height: 160px; }
+      input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
+      button { padding: 10px 14px; cursor: pointer; border-radius: 10px; border: 1px solid #ddd; background: #fff; }
+      button.primary { background:#111; color:#fff; border: 1px solid #111; }
+      button:disabled { opacity: 0.7; cursor: not-allowed; }
+      .card { border: 1px solid #ddd; padding: 14px; border-radius: 12px; margin-top: 16px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .muted { color: #666; font-size: 14px; }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .pill { display: inline-block; padding: 5px 10px; border-radius: 999px; border: 1px solid #ddd; font-size: 12px; background: #fafafa; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+      th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; vertical-align: top; }
       code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
       pre { background: #f6f6f6; padding: 12px; border-radius: 8px; overflow: auto; }
+      .divider { height: 1px; background: #eee; margin: 16px 0; }
+      .file { padding: 10px; border: 1px dashed #ccc; border-radius: 12px; background: #fcfcfc; }
+      .btnrow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .hidden { display:none; }
+
+      /* shimmer / loading bar */
+      .loading-bar {
+        height: 6px; width: 100%;
+        border-radius: 999px;
+        background: #eee;
+        overflow: hidden;
+        display: none;
+        margin-top: 10px;
+      }
+      .loading-bar::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 30%;
+        background: linear-gradient(90deg, transparent, rgba(0,0,0,0.12), transparent);
+        animation: shimmer 1s infinite;
+      }
+      @keyframes shimmer {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(420%); }
+      }
     </style>
   </head>
+
   <body>
     <h1>Meeting Notes Agent</h1>
+    <p class="muted">
+      Text or upload an image/PDF → OCR only if needed → summary + actions + decisions + analytics + usage logging
+    </p>
 
-    <form method="post" action="/ui/summarize">
-      <label>Meeting title</label>
-      <input name="meeting_title" placeholder="Weekly sync" value="{{ meeting_title or '' }}" />
+    <div class="card">
+      <h2 style="margin: 0 0 6px;">Generate Meeting Pack</h2>
+      <div class="muted">Best demo: shows OCR decision, decisions list, analytics, and cost/usage.</div>
 
-      <div style="height: 10px"></div>
+      <form id="packForm" method="post" action="/ui/pack" enctype="multipart/form-data" style="margin-top: 12px;">
+        <div class="grid">
+          <div>
+            <label>Tenant ID</label>
+            <input name="tenant_id" placeholder="demo-tenant" value="{{ (pack.tenant_id if pack else 'demo-tenant') }}" />
+          </div>
+          <div>
+            <label>User ID</label>
+            <input name="user_id" placeholder="angad" value="{{ (pack.user_id if pack else 'angad') }}" />
+          </div>
+        </div>
 
-      <label>Notes</label>
-      <textarea name="text" placeholder="Paste meeting notes here...">{{ text or '' }}</textarea>
+        <div style="height: 10px"></div>
 
-      <div style="height: 10px"></div>
-      <button type="submit">Summarize</button>
-    </form>
+        <label>Notes (optional if uploading a file)</label>
+        <textarea name="text" placeholder="Paste meeting notes here...">{{ text or '' }}</textarea>
+        <div class="muted" style="margin-top:6px;">
+          Tip: Paste text OR upload a file. If both are provided, the pipeline prefers text (avoids OCR cost).
+        </div>
 
-    {% if request_id %}
+        <div style="height: 10px"></div>
+
+        <div class="file">
+          <label>Upload (JPG/PNG/PDF)</label><br />
+          <input type="file" name="file" />
+          <div class="muted" style="margin-top:6px;">Use for handwritten notes / screenshots / scanned PDFs.</div>
+        </div>
+
+        <div style="height: 12px"></div>
+
+        <div class="btnrow">
+          <button id="packBtn" class="primary" type="submit">Run Meeting Pack</button>
+          <a href="/" style="text-decoration:none; padding:10px 14px; border-radius:10px; border:1px solid #ddd;">Reset</a>
+          <a class="muted" href="/docs" style="margin-left:auto;">Swagger (/docs)</a>
+        </div>
+
+        <div id="packLoading" class="loading-bar"></div>
+      </form>
+    </div>
+
+    {% if pack %}
       <div class="card">
-        <strong>Request id:</strong> <code>{{ request_id }}</code>
-      </div>
-    {% endif %}
+        <h3 style="margin:0 0 10px;">Run Details</h3>
 
-    {% if markdown %}
+        <div class="row">
+          <span class="pill"><strong>tenant</strong>: {{ pack.tenant_id }}</span>
+          <span class="pill"><strong>user</strong>: {{ pack.user_id }}</span>
+          <span class="pill"><strong>request_id</strong>: <code>{{ pack.request_id }}</code></span>
+        </div>
+
+        <div style="height: 8px"></div>
+
+        <div class="row">
+          <span class="pill"><strong>source</strong>: {{ pack.source }}</span>
+          <span class="pill"><strong>ocr_used</strong>: {{ pack.ocr_used }}</span>
+          <span class="pill"><strong>ocr_pages</strong>: {{ pack.ocr_pages }}</span>
+          <span class="pill"><strong>ocr_conf</strong>: {{ pack.ocr_confidence if pack.ocr_confidence is not none else "—" }}</span>
+          <span class="pill"><strong>unassigned</strong>: {{ pack.unassigned_count }}</span>
+        </div>
+
+        <div style="height: 10px"></div>
+
+        <div class="row">
+          <span class="pill"><strong>token_est</strong>: {{ pack.usage.token_estimate }}</span>
+          <span class="pill"><strong>llm_cost_usd_est</strong>: {{ pack.usage.llm_cost_usd_est }}</span>
+          <span class="pill"><strong>ocr_cost_usd_est</strong>: {{ pack.usage.ocr_cost_usd_est }}</span>
+          <span class="pill"><strong>total_cost_usd_est</strong>: {{ pack.usage.total_cost_usd_est }}</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="btnrow">
+          <button type="button" onclick="toggle('tenantPanel')">Tenant cost & OCR split</button>
+          <button type="button" onclick="toggle('userPanel')">User cost & OCR split</button>
+          <button type="button" onclick="toggle('eventsPanel')">Last 20 usage events</button>
+        </div>
+
+        <div id="tenantPanel" class="hidden" style="margin-top:12px;">
+          <h4 style="margin:0 0 8px;">Tenant summary</h4>
+          <div class="row">
+            <span class="pill"><strong>total_requests</strong>: {{ tenant_usage.total_requests }}</span>
+            <span class="pill"><strong>ocr_requests</strong>: {{ tenant_usage.ocr_requests }}</span>
+            <span class="pill"><strong>non_ocr_requests</strong>: {{ tenant_usage.non_ocr_requests }}</span>
+            <span class="pill"><strong>total_ocr_pages</strong>: {{ tenant_usage.total_ocr_pages }}</span>
+            <span class="pill"><strong>total_cost_usd_est</strong>: {{ tenant_usage.total_cost_usd_est }}</span>
+          </div>
+        </div>
+
+        <div id="userPanel" class="hidden" style="margin-top:12px;">
+          <h4 style="margin:0 0 8px;">User summary</h4>
+          <div class="row">
+            <span class="pill"><strong>total_requests</strong>: {{ user_usage.total_requests }}</span>
+            <span class="pill"><strong>ocr_requests</strong>: {{ user_usage.ocr_requests }}</span>
+            <span class="pill"><strong>non_ocr_requests</strong>: {{ user_usage.non_ocr_requests }}</span>
+            <span class="pill"><strong>total_ocr_pages</strong>: {{ user_usage.total_ocr_pages }}</span>
+            <span class="pill"><strong>total_cost_usd_est</strong>: {{ user_usage.total_cost_usd_est }}</span>
+          </div>
+        </div>
+
+        <div id="eventsPanel" class="hidden" style="margin-top:12px;">
+          <h4 style="margin:0 0 8px;">Last 20 events (tenant)</h4>
+          <table>
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Endpoint</th>
+                <th>Source</th>
+                <th>OCR Used</th>
+                <th>OCR Pages</th>
+                <th>Token Est</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in usage_events %}
+                <tr>
+                  <td><code>{{ e.created_at_utc }}</code></td>
+                  <td>{{ e.endpoint }}</td>
+                  <td>{{ e.source }}</td>
+                  <td>{{ "Yes" if e.ocr_used else "No" }}</td>
+                  <td>{{ e.ocr_pages }}</td>
+                  <td>{{ e.token_estimate }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Decisions ({{ pack.decisions|length }})</h3>
+        {% if pack.decisions|length > 0 %}
+          <ul>
+            {% for d in pack.decisions %}
+              <li>{{ d }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="muted">No explicit decisions detected.</div>
+        {% endif %}
+      </div>
+
       <div class="card">
         <h3>Summary (markdown)</h3>
-        <pre>{{ markdown }}</pre>
+        <pre>{{ pack.markdown }}</pre>
       </div>
-    {% endif %}
 
-    {% if actions is not none %}
       <div class="card">
-        <h3>Action items ({{ actions|length }})</h3>
+        <h3>Action items ({{ pack.actions|length }})</h3>
         <table>
           <thead>
             <tr>
@@ -57,7 +216,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for a in actions %}
+            {% for a in pack.actions %}
               <tr>
                 <td>{{ a.action }}</td>
                 <td>{{ a.owner or "—" }}</td>
@@ -67,7 +226,37 @@
             {% endfor %}
           </tbody>
         </table>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <span class="pill"><strong>top_owner</strong>: {{ pack.analytics.top_owner if pack.analytics.top_owner else "—" }}</span>
+          <span class="pill"><strong>top_owner_task_count</strong>: {{ pack.analytics.top_owner_task_count }}</span>
+        </div>
       </div>
     {% endif %}
+
+    <script>
+      // shimmer on submit
+      (function () {
+        const form = document.getElementById("packForm");
+        const btn = document.getElementById("packBtn");
+        const bar = document.getElementById("packLoading");
+        if (!form || !btn || !bar) return;
+
+        form.addEventListener("submit", function () {
+          btn.disabled = true;
+          btn.textContent = "Processing…";
+          bar.style.display = "block";
+        });
+      })();
+
+      // toggle panels
+      function toggle(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle("hidden");
+      }
+    </script>
   </body>
 </html>
