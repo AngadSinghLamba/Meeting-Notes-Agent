@@ -5,3 +5,7 @@ __pycache__
 .git
 .gitignore
 .DS_Store
+ .env
+.venv
+__pycache__
+data/*.db

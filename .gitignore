@@ -8,3 +8,7 @@ data/usage.db
 data/*.db
 __pycache__/
 .venv/
+
+# runtime DB
+/data/*.db
+/data/usage.db
